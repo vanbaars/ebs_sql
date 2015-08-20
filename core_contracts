@@ -1,0 +1,529 @@
+----------------------------------------------------
+-- Verschillende queries voor de module Core Contracts
+-- Versie 0.1         Datum 20-08-2015
+----------------------------------------------------
+
+
+
+----------------------------------------------------
+-- Contracten, Overzicht van alle contracten
+----------------------------------------------------
+select bdtv.name contract_type_naam
+,      fl.meaning
+,      rca.owner_id
+,      rca.*
+from okc_rep_contracts_all rca    -- contract repository
+,    okc_bus_doc_types_vl bdtv    -- contract document typen
+,    fnd_lookups fl               -- lookup tabel
+,    fnd_user fu                  -- user tabel
+where rca.contract_type = bdtv.document_type
+and bdtv.intent         = fl.lookup_code
+and rca.owner_id       = fu.user_id
+and upper(fl.lookup_type)    = 'OKC_REP_CONTRACT_INTENTS'
+--and rca.contract_id = 12345      -- zoeken op contrac id
+--and rca.contract_number = 1234     -- zoeken op contract nummer 
+--and rca.contract_number in (1234, 1235, 1236, 1236)   -- zoeken op meerdere contract nummers
+--and rca.contract_name like '%contract%'       -- zoeken op deel contract naam
+--and rca.owner_id = 12345              -- zoeken op contract beheerder (user id)
+--and upper(fu.user_name) = 'USER'   -- zoeken op contract beheerder (user name)
+--and rca.contract_effective_date > to_date('01-01-2015', 'dd-mm-yyyy')     -- zoeken op startdatum contract
+--and rca.contract_expiration_date > to_date('01-01-2015', 'dd-mm-yyyy')    -- zoeken op einddatum contract
+order by rca.contract_id desc
+;
+
+----------------------------------------------------
+-- Contract beheerder
+----------------------------------------------------
+select rca.contract_number,
+       (select nvl(pf.full_name, fu.user_name)
+        from per_all_people_f pf,
+             fnd_user fu
+        where fu.user_id           = rca.owner_id
+        and pf.person_id (+)       = fu.employee_id
+        and (fu.employee_id       is null
+        or pf.effective_start_date =
+           (select max(effective_start_date)
+            from per_all_people_f
+            where person_id = fu.employee_id
+            ))
+        ) contract_owner,
+        rca.*     -- contract gegevens
+from okc_rep_contracts_all rca  -- contract repository
+where rca.contract_number = 1234   -- zoeken op conrtact nummer
+;
+
+----------------------------------------------------
+-- Aantal contracten per beheerder 
+----------------------------------------------------
+select beh.contract_owner  -- contract beheerder
+,      count(beh.nummer)    -- aantal contracten
+from (select (select nvl(pf.full_name, fu.user_name)
+              from per_all_people_f pf,
+                   fnd_user fu
+              where fu.user_id           = rca.owner_id
+              and pf.person_id (+)       = fu.employee_id
+              and (fu.employee_id       is null
+              or pf.effective_start_date =
+                 (select max(effective_start_date)
+                  from per_all_people_f
+                  where person_id = fu.employee_id
+                  ))
+              ) contract_owner,
+              rca.contract_number nummer
+      from okc_rep_contracts_all rca ) beh   -- ophalen van contract beherder (medewerker) bij contract
+group by beh.contract_owner;
+
+----------------------------------------------------
+-- Aantal Contracten
+----------------------------------------------------
+select count(rca.contract_id)
+from okc_rep_contracts_all rca
+;
+
+----------------------------------------------------
+-- Voorkomende statussen
+----------------------------------------------------
+select distinct(rca.contract_status_code)
+from okc_rep_contracts_all rca
+;
+
+----------------------------------------------------
+-- Contractrelaties
+----------------------------------------------------
+select rca.contract_number
+,      rca.latest_signed_ver_number versie
+,      rcp.party_role_code
+, case
+    when upper(rcp.party_role_code) = 'INTERNAL_ORG'
+    then hrou.name
+    when upper(rcp.party_role_code) = 'PARTNER_ORG'
+    then hp.party_name
+    when upper(rcp.party_role_code) = 'SUPPLIER_ORG'
+    then pov.vendor_name
+  end naam
+from okc_rep_contracts_all rca    -- contracten repository
+,    okc_rep_contract_parties rcp   -- contract relaties
+,    hr_all_organization_units hrou  -- operating units
+,    hz_parties hp                   -- relaties
+,    po_vendors pov                   -- leveranciers
+where rca.contract_id     = rcp.contract_id
+and   rcp.party_id        = hrou.organization_id(+)
+and   rcp.party_id        = hp.party_id(+)
+and   rcp.party_id        = pov.vendor_id(+)
+-- and rca.contract_number = '1234' -- zoeken op contractnummer
+-- and pov.vendor_name = 'leveranciersnaam'  -- zoeken op leverancier
+-- and upper(rcp.party_role_code) <> 'SUPPLIER_ORG' -- uitsluiten van type relatie
+-- and upper(rcp.party_role_code) = 'SUPPLIER_ORG' -- zoeken op 1 type relatie
+and upper(rca.contract_status_code) not in ('TERMINATED','CANCELLED')  -- uitsluiten van contract statussen
+--and rca.contract_expiration_date > sysdate         -- zoeken op nu geldige contracten
+--and rca.contract_expiration_date > to_date('01-01-2015','dd-mm-yyyy') - zoeken op afloopdatum contract
+order by rca.contract_id desc,  rcp.party_role_code 
+;  
+
+----------------------------------------------------
+-- Aantal partijen per contract
+----------------------------------------------------
+select rca.contract_number
+,      rca.contract_status_code
+,      count (rca.contract_number) aantal_partijen
+from okc_rep_contracts_all rca
+,    okc_rep_contract_parties rcp
+where rca.contract_id     = rcp.contract_id
+--      and upper(rca.contract_status_code) not in ('TERMINATED','CANCELLED')  -- sluit bepaalde contrac statussen uit
+      and rca.contract_number = 1234    -- zoeken op contract nummer
+--and upper(rcp.party_role_code) = 'SUPPLIER_ORG'  -- tel alleen de partijen die leverancier zijn
+--and upper(rcp.party_role_code) = 'INTERNAL_ORG'  -- tel alleen de partijen die interne relatie zijn
+--and upper(rcp.party_role_code) = 'PARTNER_ORG'  -- tel alleen de partijen die partner zijn
+group by rca.contract_number, rca.contract_status_code
+order by aantal_partijen desc
+;
+
+----------------------------------------------------
+-- Contractrelaties en ondertekening van laatste versie
+----------------------------------------------------
+select rca.contract_number
+,      rca.latest_signed_ver_number versie
+,      rcp.party_role_code
+,      case
+         when rcp.party_role_code = 'INTERNAL_ORG'
+         then hrou.name
+         when rcp.party_role_code = 'PARTNER_ORG'
+         then hp.party_name
+         when rcp.party_role_code = 'SUPPLIER_ORG'
+         then pov.vendor_name
+       end naam
+,      sig.signed_by getekend_door -- voor ondertekening
+,      sig.signed_date ondertekeningsdatum -- voor ondertekening
+from okc_rep_contracts_all rca
+,    okc_rep_contract_parties rcp
+,    hr_all_organization_units hrou
+,    hz_parties hp
+,    po_vendors pov
+,    okc_rep_signature_details sig   -- voor ondertekening
+where rca.contract_id     = rcp.contract_id
+and   rcp.party_id        = hrou.organization_id(+)
+and   rcp.party_id        = hp.party_id(+)
+and   rcp.party_id        = pov.vendor_id(+)
+and   rcp.contract_id     = sig.contract_id(+)   -- voor ondertekening
+and   rcp.party_id        = sig.party_id(+) -- voor ondertekening
+and   rca.latest_signed_ver_number = sig.contract_version_num -- voor ondertekening
+--and   rca.contract_number = '1234'
+--and   pov.vendor_name = 'leveranciersnaam'
+and   rcp.party_role_code <> 'SUPPLIER_ORG' -- sluit partijen als leverancier uit
+and   rca.contract_status_code not in ('TERMINATED','CANCELLED')  -- sluit bepaalde contract statussen uit
+and   rca.contract_expiration_date > sysdate     -- alleen contracten die nu geldig zijn
+--and   rca.contract_expiration_date > to_date('01-01-2015','dd-mm-yyyy')    - zoek op specifieke eindatum contracten
+order by rca.contract_id desc,  rcp.party_role_code 
+;
+
+----------------------------------------------------
+-- Contracten per Bedrijfsonderdeel (OU)
+----------------------------------------------------
+select hou.name
+,      aou.*
+from (select rca.org_id ,
+        count(rca.org_id) aantal
+        from okc_rep_contracts_all rca
+        group by rca.org_id
+      ) aou
+,     hr_operating_units hou
+where hou.organization_id = aou.org_id
+order by aantal desc ;
+
+----------------------------------------------------
+-- Aantal contracten aangemaakt / gewijzigd / eigenaar per user
+----------------------------------------------------
+select fnu.user_name
+,      count(fnu.user_name) aantal
+from okc_rep_contracts_all rca
+,    fnd_user fnu
+where 4=4
+--and   rca.created_by = fnu.user_id  -- aangemaakt door
+and   rca.last_updated_by = fnu.user_id -- laatst bijgewerkt door
+--and   rca.owner_id = fnu.user_id
+group by fnu.user_name
+order by aantal desc ;
+
+----------------------------------------------------
+-- Artikelen (Clausules) 
+----------------------------------------------------
+select *
+from okc_articles_all
+order by article_title
+;
+
+----------------------------------------------------
+-- Mogelijke documentsoorten
+----------------------------------------------------
+select *
+from okc_bus_doc_types_vl bdt
+where bdt.enable_contract_terms_yn = 'Y'
+;
+
+----------------------------------------------------
+-- Gebruikte documentsoorten 
+----------------------------------------------------
+select bdt.name
+,      count(bdt.name)
+from okc_rep_contracts_all rca  -- conracten repository
+,    okc_bus_doc_types_vl bdt  -- cotnract document types
+where rca.contract_type = bdt.document_type
+group by bdt.name
+;
+
+----------------------------------------------------
+-- Mogelijke contract Intenties 
+----------------------------------------------------
+select *
+from fnd_lookups fl
+where lookup_type = 'OKC_REP_CONTRACT_INTENTS'
+;
+
+----------------------------------------------------
+-- Voorkomen van versienummers
+----------------------------------------------------
+select rca.contract_version_num
+,      count(rca.contract_version_num)
+from okc_rep_contracts_all rca
+where 4=4
+group by rca.contract_version_num
+order by rca.contract_version_num 
+;
+
+----------------------------------------------------
+-- Gebruikte opslaglocaties
+----------------------------------------------------
+select rca.physical_location 
+,      count(rca.physical_location) aantal
+from okc_rep_contracts_all rca
+where 4=4
+group by rca.physical_location
+order by aantal desc
+;
+
+----------------------------------------------------
+-- Gebruikte Contact Rollen
+----------------------------------------------------
+select *
+from okc_rep_contact_roles_vl rcr  -- contract rollen
+where rcr.start_date            < sysdate
+and nvl(rcr.end_date,sysdate+1) > sysdate
+;
+
+----------------------------------------------------
+-- bijlagen bij een contract
+----------------------------------------------------
+select rca.contract_number contract_nummer ,
+  --  ocd.*,
+  --  fdo.*,
+  --  flo.*,
+  fdo.file_name bestandsnaam ,
+  cdd.document_description omschrijving,
+  fdcl.user_name categorie,
+  ocd.effective_from_version ,
+  rca.contract_id contract_id ,
+  ocd.business_document_id ,
+  flo.file_content_type
+from okc_rep_contracts_all rca ,
+  okc_contract_docs ocd ,
+  fnd_document_categories_tl fdcl ,
+  fnd_attached_documents fad ,
+  fnd_documents fdo ,
+  fnd_lobs flo,
+  okc_contract_docs_details_vl cdd
+where rca.contract_id          = ocd.business_document_id
+and   ocd.attached_document_id = fad.attached_document_id
+and   cdd.attached_document_id = ocd.attached_document_id
+and   fad.document_id          = fdo.document_id
+and   fdo.category_id          = fdcl.category_id
+and   fdcl.language            = 'NL'
+and   fdo.media_id             = flo.file_id
+--and   contract_id              = 12345  -- zoeken op contract id
+--and contract_number            = 1234  -- zoeken op contract nummer
+order by contract_id desc
+;
+
+----------------------------------------------------
+-- Gerelateerde contracten
+----------------------------------------------------
+select rca.contract_number nummer, 
+       rcarel.contract_number gerelateerd,
+       rcarel.contract_name naam_gerelateerd,
+       rrt.relationship_role1_name  
+from okc.okc_rep_contracts_all rca
+,    okc_rep_contract_rels rcr
+,    okc.okc_rep_contracts_all rcarel
+,    okc_rep_relationships_tl   rrt
+where 4=4
+and   rca.contract_id = rcr.contract_id
+and   rcarel.contract_id = rcr.related_contract_id
+and   rcr.relationship_role1_id = rrt.relationship_role1_id
+and   rrt.language = 'NL'
+--and   rca.contract_number = 1234
+;
+
+----------------------------------------------------
+-- Keyword search
+/* Keyword search zoekt in : 1. Contract Number, 2. Contract Name, 3. Party Name, 4. Operating Unit, 5. Keywords,
+6. Description 7. Version Comments (alleen van laatse versie) 8. Contact name??
+You can use the Keyword Search feature to search for Repository contracts. Enter text into the Keyword
+field, and the system will search for it in the following fields: Contract Number, Contract Name, Description,
+Keywords, Version Comments, Operating Unit, Party Name and Contact Name. The results will be ranked by
+relevance. Keyword Search supports Oracle Text query operators, such as AND, OR and % (wildcard).
+OKC_REP_CONTRACT_PARTIES table stores the Parties in a Contract.
+The Party can be from PO_VENDORS, HZ_PARTIES, or HR_ALL_ORGANIZATION_UNITS.
+A PARTY_ID with a PARTY_ROLE_CODE of SUPPLIER-ORG comes from PO_VENDORS;
+A PARTY_ID with a PARTY_ROLE_CODE of CUSTOMER_ORG or PARTNER_ORG comes from HZ_PARTIES;
+A PARTY_ID with a PARTY_ROLE_CODE of INTERNAL_ORG comes from HR_ALL_ORGANIZATION_UNITS.  */
+----------------------------------------------------
+SELECT DISTINCT rca.contract_number contract ,
+  rca.contract_name contract_naam
+  /*,      rel.rel_name relatie
+  ,      hrou.name bedrijfsonderdeel
+  ,      rca.keywords keywords
+  ,      rca.contract_desc contract_beschrijving -- */
+FROM okc_rep_contracts_all rca ,
+  okc_rep_contract_parties rcp ,
+  hr_all_organization_units hrou ,
+  (SELECT rcp.party_id rel_id ,
+    CASE
+      WHEN rcp.party_role_code = 'INTERNAL_ORG'
+      THEN hrou.name
+      WHEN rcp.party_role_code = 'PARTNER_ORG'
+      THEN hp.party_name
+      WHEN rcp.party_role_code = 'SUPPLIER_ORG'
+      THEN pov.vendor_name
+    END rel_name
+  FROM okc_rep_contract_parties rcp ,
+    hr_all_organization_units hrou ,
+    hz_parties hp ,
+    po_vendors pov
+  WHERE 4          =4
+  AND rcp.party_id = hrou.organization_id(+)
+  AND rcp.party_id = hp.party_id(+)
+  AND rcp.party_id = pov.vendor_id(+)
+  ) rel
+WHERE 4             =4
+AND rca.contract_id = rcp.contract_id
+AND rca.org_id      = hrou.organization_id
+AND rcp.party_id    = rel.rel_id
+AND ( upper(rca.contract_number) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%') -- contract nummer
+OR upper(rca.contract_name) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')      -- contract naam
+OR upper(rel.rel_name) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')           -- Party name
+OR upper(hrou.name) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')              -- Operating unit
+OR upper(rca.keywords) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')           -- Keywords
+OR upper(rca.contract_desc) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')      -- Beschrijving
+OR upper(rca.version_comments) LIKE upper('%Communicatie%Creatieve%Vormgeving%Perceel%2%Kris%Kras%Tigges%Total%Identity%')   -- Versie Commentaar (alleen van laatse versie)
+  )                                                                                                                          -- */
+  --and   rca.contract_number in (1234, 1235, 1236, 1237)  -- specifiek(e) contract(en) bekijken.
+ORDER BY rca.contract_number;
+;
+
+----------------------------------------------------
+-- Stopword list
+-- Oracle Text and UCM - Stop Word Management (Doc ID 870122.1)
+----------------------------------------------------
+--This query tells us that the current default stoplist is owned by the CTXSYS user and is called DEFAULT_STOPLIST.
+SELECT *
+FROM ctx_parameters
+WHERE par_name LIKE 'DEFAULT_STOPLIST' ;
+-- To find out what words are in this list, a second query can be performed.
+SELECT *
+FROM ctx_stopwords
+WHERE spw_stoplist LIKE 'DEFAULT_STOPLIST' ;
+SELECT *
+  --from  apps.FT_IDCCOLL1
+FROM apps.FT_IDCTEXT2 ;
+
+---------
+-- LOV relaties type partner beperken tot 1 resultaat
+-- conditie: Hoofdvestiging en tax_reference is gevuld
+---------
+select party_name naam,
+       party_id,
+       party_name,
+       party_number,
+       status,
+       party_type,
+       tax_reference,
+       attribute1       
+from hz_parties
+where party_type = 'ORGANIZATION'
+and status       = 'A'
+and attribute1 = 'Hoofdvestiging'
+and tax_reference is not null
+and upper(party_name) like upper('Organisatienaam')
+order by party_name
+;
+
+
+
+
+---------
+-- View achter contracten scherm
+---------
+SELECT ContractEO.CONTRACT_ID,
+  ContractEO.CONTRACT_VERSION_NUM,
+  ContractEO.CONTRACT_NAME,
+  ContractEO.CONTRACT_NUMBER,
+  ContractEO.CONTRACT_DESC,
+  ContractEO.CONTRACT_TYPE,
+  ContractEO.CONTRACT_STATUS_CODE,
+  ContractEO.VERSION_COMMENTS,
+  ContractEO.ORG_ID,
+  ContractEO.AUTHORING_PARTY_CODE,
+  ContractEO.OWNER_ID,
+  ContractEO.CONTRACT_EFFECTIVE_DATE,
+  ContractEO.CONTRACT_EXPIRATION_DATE,
+  ContractEO.CURRENCY_CODE,
+  ContractEO.AMOUNT,
+  ContractEO.OVERALL_RISK_CODE,
+  ContractEO.CANCELLATION_COMMENTS,
+  ContractEO.CANCELLATION_DATE,
+  ContractEO.TERMINATION_COMMENTS,
+  ContractEO.TERMINATION_DATE,
+  ContractEO.KEYWORDS,
+  ContractEO.PHYSICAL_LOCATION,
+  ContractEO.LATEST_SIGNED_VER_NUMBER,
+  fl.meaning contract_status,
+  org.name contract_organization,
+  NVL(pf.full_name, fu.user_name) contract_owner,
+  obd.name contract_type_name,
+  obd.intent intent_code,
+  fl1.meaning intent,
+  ContractEO.ATTRIBUTE_CATEGORY,
+  ContractEO.ATTRIBUTE1,
+  ContractEO.ATTRIBUTE2,
+  ContractEO.ATTRIBUTE3,
+  ContractEO.ATTRIBUTE4,
+  ContractEO.ATTRIBUTE5,
+  ContractEO.ATTRIBUTE6,
+  ContractEO.ATTRIBUTE7,
+  ContractEO.ATTRIBUTE8,
+  ContractEO.ATTRIBUTE9,
+  ContractEO.ATTRIBUTE10,
+  ContractEO.ATTRIBUTE11,
+  ContractEO.ATTRIBUTE12,
+  ContractEO.ATTRIBUTE13,
+  ContractEO.ATTRIBUTE14,
+  ContractEO.ATTRIBUTE15,
+  pf.person_id owner_person_id,
+  ContractEO.EXPIRE_NTF_FLAG,
+  ContractEO.EXPIRE_NTF_PERIOD,
+  ContractEO.NOTIFY_CONTACT_ROLE_ID,
+  ContractEO.USE_ACL_FLAG,
+  Curr.name Currency_Name,
+  ContractEO.REFERENCE_DOCUMENT_NUMBER,
+  ContractEO.REFERENCE_DOCUMENT_TYPE
+FROM OKC_REP_CONTRACTS_ALL ContractEO,
+  Hr_all_organization_units org,
+  Per_all_people_f pf,
+  fnd_user fu,
+  fnd_lookups fl,
+  okc_bus_doc_types_vl obd,
+  fnd_lookups fl1,
+  fnd_currencies_tl Curr
+WHERE ContractEO.contract_id = :1
+AND org.organization_id      = ContractEO.org_id
+AND fu.user_id               = ContractEO.owner_id
+AND pf.person_id (+)         = fu.employee_id
+AND fl.lookup_type           = 'OKC_REP_CONTRACT_STATUSES'
+AND fl.lookup_code           = ContractEO.CONTRACT_STATUS_CODE
+AND obd.document_type        = ContractEO.Contract_Type
+AND fl1.lookup_type          = 'OKC_REP_CONTRACT_INTENTS'
+AND fl1.lookup_code          = obd.intent
+AND (fu.employee_id         IS NULL
+OR pf.effective_start_date   =
+  (SELECT MAX(effective_start_date)
+  FROM per_all_people_f
+  WHERE person_id = fu.employee_id
+  ))
+AND ContractEO.currency_code = Curr.currency_code (+)
+AND Curr.language (+)        = USERENV('LANG') ;
+
+---------
+-- View achter LOV relaties type partner
+---------
+SELECT *
+FROM
+  (SELECT party_id,
+    party_name,
+    party_number
+  FROM hz_parties
+  WHERE party_type = 'ORGANIZATION'
+  AND status       = 'A'
+  ) QRSLT
+WHERE (( UPPER(PARTY_NAME) LIKE UPPER(:1)
+AND (PARTY_NAME LIKE :2
+OR PARTY_NAME LIKE :3
+OR PARTY_NAME LIKE :4
+OR PARTY_NAME LIKE :5))) 
+;
+
+
+
+
+
+  
+
+
