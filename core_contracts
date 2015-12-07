@@ -322,6 +322,25 @@ and   rrt.language = 'NL'
 --and   rca.contract_number = 1234
 ;
 
+---------
+-- Overzicht Conrtact Toegang via Access Control List
+---------
+select rca.contract_number Nummer 
+,      rca.contract_name Naam
+,      jte.source_name Naam_Deelnemer
+from  jtf_rs_resource_extns jte
+,     okc_rep_contracts_all rca
+,     fnd_grants fg
+,     fnd_objects fo
+where 4=4
+and   jte.resource_id       = fg.parameter2
+and   fg.object_id          = fo.object_id
+and   fo.obj_name           = 'OKC_REP_CONTRACT'
+and   fg.parameter1         = 'EMPLOYEE'
+and   fg.instance_pk1_value = rca.contract_id
+and   rca.contract_number   = <contract nummer>
+;
+
 ----------------------------------------------------
 -- Keyword search
 /* Keyword search zoekt in : 1. Contract Number, 2. Contract Name, 3. Party Name, 4. Operating Unit, 5. Keywords,
