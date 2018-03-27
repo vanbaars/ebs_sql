@@ -1,3 +1,9 @@
+----------------------------------------------------
+-- Queries voor het ophalen van bijlagen bij inkooporders
+-- op header, regel en distributieniveau.
+-- Versie 0.1        Datum 27-03-2018
+----------------------------------------------------
+
 ---------------------------------------------------
 -- Inkooporder bijlagen op header niveau
 ----------------------------------------------------
@@ -23,7 +29,7 @@ and   fad.entity_name           = 'PO_HEADERS'
 --and   fdo.datatype_id           = 6   -- 6=file ==> files in FND_LOBS
 AND   fdcl.language             = 'NL'
 and   fdd.language              = 'NL'
-AND   pha.segment1              = '80004446'
+AND   pha.segment1              = <io_nummer>
 ORDER BY pha.segment1 DESC 
 ;
 
@@ -56,7 +62,7 @@ and   fad.entity_name           = 'PO_LINES'
 --and   fdo.datatype_id           = 6   -- 6=file ==> files in FND_LOBS
 AND   fdcl.language             = 'NL'
 and   fdd.language              = 'NL'
-AND   pha.segment1              = '80004446'
+AND   pha.segment1              = <io_nummer>
 ORDER BY pha.segment1 DESC 
 ;
 
@@ -92,6 +98,6 @@ and   fad.entity_name                = 'PO_SHIPMENTS'
 --and   fdo.datatype_id                = 6   -- 6=file ==> files in FND_LOBS
 AND   fdcl.language                  = 'NL'
 and   fdd.language                   = 'NL'
-AND   pha.segment1                   = '80004446'
+AND   pha.segment1                   = <io_nummer>
 ORDER BY pha.segment1 DESC 
 ;
