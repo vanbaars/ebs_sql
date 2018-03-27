@@ -1,0 +1,97 @@
+---------------------------------------------------
+-- Inkooporder bijlagen op header niveau
+----------------------------------------------------
+SELECT pha.segment1 inkoopordernr,
+       fad.entity_name niveau,
+       fdo.file_name Naam_document,
+       fdd.user_name bestandstype,
+       fl.file_content_type mime_type,
+       fl.file_data
+FROM po_headers_all pha,
+     fnd_document_categories_tl fdcl ,
+     fnd_document_datatypes fdd,
+     fnd_attached_documents fad ,
+     fnd_documents fdo ,
+     fnd_lobs fl
+WHERE 4=4
+and   to_char(pha.po_header_id) = fad.pk1_value
+AND   fad.document_id           = fdo.document_id
+AND   fdo.category_id           = fdcl.category_id
+AND   fdo.media_id              = fl.file_id(+)
+and   fdo.datatype_id           = fdd.datatype_id
+and   fad.entity_name           = 'PO_HEADERS'
+--and   fdo.datatype_id           = 6   -- 6=file ==> files in FND_LOBS
+AND   fdcl.language             = 'NL'
+and   fdd.language              = 'NL'
+AND   pha.segment1              = '80004446'
+ORDER BY pha.segment1 DESC 
+;
+
+
+----------------------------------------------------
+-- Inkooporder bijlagen op line niveau
+----------------------------------------------------
+SELECT pha.segment1 inkoopordernr,
+       pla.line_num regelnr,
+       fad.entity_name niveau,
+       fdo.file_name Naam_document,
+       fdd.user_name bestandstype,
+       fl.file_content_type mime_type,
+       fl.file_data
+FROM po_headers_all pha,
+     po_lines_all pla,
+     fnd_document_categories_tl fdcl ,
+     fnd_document_datatypes fdd,
+     fnd_attached_documents fad ,
+     fnd_documents fdo ,
+     fnd_lobs fl
+WHERE 4=4
+and   pha.po_header_id          = pla.po_header_id
+and   to_char(pla.po_line_id)   = fad.pk1_value
+AND   fad.document_id           = fdo.document_id
+AND   fdo.category_id           = fdcl.category_id
+AND   fdo.media_id              = fl.file_id(+)
+and   fdo.datatype_id           = fdd.datatype_id
+and   fad.entity_name           = 'PO_LINES'
+--and   fdo.datatype_id           = 6   -- 6=file ==> files in FND_LOBS
+AND   fdcl.language             = 'NL'
+and   fdd.language              = 'NL'
+AND   pha.segment1              = '80004446'
+ORDER BY pha.segment1 DESC 
+;
+
+----------------------------------------------------
+-- Inkooporder bijlagen op verzending niveau
+----------------------------------------------------
+SELECT pha.segment1 inkoopordernr,
+       pla.line_num regelnr,
+       psa.shipment_num verzendingnr,
+       fad.entity_name niveau,
+       fdo.file_name Naam_document,
+       fdd.user_name bestandstype,
+       fl.file_content_type mime_type,
+       fl.file_data
+FROM po_headers_all pha,
+     po_lines_all pla, 
+     po_line_locations_all psa,
+     fnd_document_categories_tl fdcl,
+     fnd_document_datatypes fdd,
+     fnd_attached_documents fad,
+     fnd_documents fdo,
+     fnd_lobs fl
+WHERE 4=4
+and   pha.po_header_id               = pla.po_header_id
+and   pha.po_header_id               = psa.po_header_id
+and   pla.po_line_id                 = psa.po_line_id
+and   to_char(psa.line_location_id)  = fad.pk1_value
+AND   fad.document_id                = fdo.document_id
+AND   fdo.category_id                = fdcl.category_id
+AND   fdo.media_id                   = fl.file_id(+)
+and   fdo.datatype_id                = fdd.datatype_id
+and   fad.entity_name                = 'PO_SHIPMENTS'
+--and   fdo.datatype_id                = 6   -- 6=file ==> files in FND_LOBS
+AND   fdcl.language                  = 'NL'
+and   fdd.language                   = 'NL'
+AND   pha.segment1                   = '80004446'
+ORDER BY pha.segment1 DESC 
+;
